@@ -1,0 +1,173 @@
+<html>
+<head>
+<title>minimal demo</title>
+
+<!-- CSS goes here -->
+<style>
+body {
+  background-color: #FFF; /* example... */
+}
+</style>
+
+<!-- import convnetjs library -->
+<script src="lib/convnet.js"></script>
+<script src='testset_s.js'></script>
+<script src='trainset_s.js'></script>
+
+<!-- javascript goes here -->
+<script type="text/javascript">
+
+// read the training set from online js file
+function read_train_data() {
+  // fetch the appropriate row of the training image and reshape into a Vol
+  var x = new convnetjs.Vol(16,16,1,0.0);
+  var label = Math.floor(Math.random() * (3+1));
+  var i = Math.floor(Math.random() * (99+1));
+
+  switch(label) {
+    case 0:
+      for(var xc=0;xc<16;xc++) {
+        for(var yc=0;yc<16;yc++) {
+          x.set(yc,xc,0,image_data_bags[i][yc*16+xc]/255.0-0.5);
+        }
+      }
+      break
+    case 1:
+      for(var xc=0;xc<16;xc++) {
+        for(var yc=0;yc<16;yc++) {
+          x.set(yc,xc,0,image_data_clothes[i][yc*16+xc]/255.0-0.5);
+        }
+      }
+      break
+    case 2:
+      for(var xc=0;xc<16;xc++) {
+        for(var yc=0;yc<16;yc++) {
+          x.set(yc,xc,0,image_data_pants[i][yc*16+xc]/255.0-0.5);
+        }
+      }
+      break
+    case 3:
+      for(var xc=0;xc<16;xc++) {
+        for(var yc=0;yc<16;yc++) {
+          x.set(yc,xc,0,image_data_shoes[i][yc*16+xc]/255.0-0.5);
+        }
+      }
+      break
+    default:
+      return read_train_data();
+  }
+
+  // var dx = Math.floor(Math.random()*5-2);
+  // var dy = Math.floor(Math.random()*5-2);
+  // x = convnetjs.augment(x, 32, dx, dy, Math.random()<0.5); //maybe flip horizontally
+
+  return {x:x, label:label};
+}
+
+// read the test set for predict from online js file
+function read_test_data() {
+  var x = new Array(40);
+  var reallabels = new Array(40);
+
+  for(var i=0;i<10;i++) {
+    x[i] = new convnetjs.Vol(16,16,1,0.0);
+    for(var xc=0;xc<16;xc++) {
+      for(var yc=0;yc<16;yc++) {
+        x[i].set(yc,xc,0,test_set_bags[i][yc*16+xc]/255.0-0.5);
+        reallabels[i] = 0;
+      }
+    }
+  }
+  for(var i=0;i<10;i++) {
+    x[i+10] = new convnetjs.Vol(16,16,1,0.0);
+    for(var xc=0;xc<16;xc++) {
+      for(var yc=0;yc<16;yc++) {
+        x[i+10].set(yc,xc,0,test_set_clothes[i][yc*16+xc]/255.0-0.5);
+        reallabels[i+10] = 1;
+      }
+    }
+  }
+  for(var i=0;i<10;i++) {
+    x[i+20] = new convnetjs.Vol(16,16,1,0.0);
+    for(var xc=0;xc<16;xc++) {
+      for(var yc=0;yc<16;yc++) {
+        x[i+20].set(yc,xc,0,test_set_pants[i][yc*16+xc]/255.0-0.5);
+        reallabels[i+20] = 2;
+      }
+    }
+  }
+  for(var i=0;i<10;i++) {
+    x[i+30] = new convnetjs.Vol(16,16,1,0.0);
+    for(var xc=0;xc<16;xc++) {
+      for(var yc=0;yc<16;yc++) {
+        x[i+30].set(yc,xc,0,test_set_shoes[i][yc*16+xc]/255.0-0.5);
+        reallabels[i+30] = 3;
+      }
+    }
+  }
+
+  return {x:x, label:reallabels};
+}
+
+var net; // declared outside -> global variable in window scope
+function start() {
+  // this gets executed on startup
+  net = new convnetjs.Net();
+  // 4 layers total:
+  // input layer of size 1x1x2 (all volumes are 3D)
+  // two fully connected layers of neurons
+  // a softmax classifier predicting probabilities for two classes: 0,1
+  var layer_defs = [];
+
+  layer_defs.push({type:'input', out_sx:16, out_sy:16, out_depth:1});
+  layer_defs.push({type:'conv', sx:5, filters:16, stride:1, pad:2, activation:'relu'});
+  layer_defs.push({type:'pool', sx:2, stride:2});
+  layer_defs.push({type:'conv', sx:5, filters:48, stride:1, pad:2, activation:'relu'});
+  layer_defs.push({type:'pool', sx:2, stride:2});
+  layer_defs.push({type:'fc', filters:400, activation:'relu', drop_prob: 0.5});
+  layer_defs.push({type:'softmax', num_classes:4});
+
+  trainer = new convnetjs.SGDTrainer(net, {learning_rate:0.01, momentum:0.9, batch_size:32, l2_decay:0.001});
+  //trainer = new convnetjs.SGDTrainer(net, {method:'adadelta', momentum:0.0, batch_size:32, l2_decay:0.001});
+
+  // create a net out of it
+  net.makeLayers(layer_defs);
+
+  for (var i=0; i<10000 ;i++) {
+    var sample = read_train_data();
+    trainer.train(sample.x,sample.label);
+  }
+
+  var test = read_test_data();
+  var xs = [].concat(test.x);
+  var ys = [].concat(test.label);
+  var n = xs.length;
+  for (var i=0; i<n; i++) {
+    probability_volume = net.forward(xs[i])
+    document.writeln('#0: ' + probability_volume.w[0] + '\n');
+    document.writeln('#1: ' + probability_volume.w[1] + '\n');
+    document.writeln('#2: ' + probability_volume.w[2] + '\n');
+    document.writeln('#3: ' + probability_volume.w[3] + '\n');
+    document.writeln('###: ' + ys[i] + '\n');
+    document.writeln('----------------------------------' + '\n');
+  }
+
+  // probability_volume = net.forward(xs[3])
+  // document.writeln('probability that x is class 0: ' + probability_volume.w[0] + '\n');
+  // document.writeln('probability that x is class 1: ' + probability_volume.w[1] + '\n');
+  // document.writeln('probability that x is class 2: ' + probability_volume.w[2] + '\n');
+  // document.writeln('probability that x is class 3: ' + probability_volume.w[3] + '\n');
+  // document.writeln('real label is: ' + ys[3] + '\n');
+  // document.writeln('----------------------------------' + '\n');
+
+  // example of running something every 1 second
+  //setInterval(periodic, 1000);
+}
+
+</script>
+</head>
+
+<body onload="start()">
+<div id="egdiv"></div>
+</body>
+</html>
